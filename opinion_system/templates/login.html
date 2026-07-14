@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block title %}登录 - 网络舆情事件智能分析系统{% endblock %}
+
+{% block content %}
+<div class="auth-container">
+    <div class="auth-card">
+        <div class="auth-header">
+            <i class="bi bi-graph-up-arrow" style="font-size: 3rem; color: var(--bs-primary);"></i>
+            <h2>网络舆情事件智能分析系统</h2>
+            <p class="text-muted">登录您的账号</p>
+        </div>
+
+        <form id="loginForm" onsubmit="handleLogin(event)">
+            <div class="mb-3">
+                <label for="username" class="form-label">用户名</label>
+                <div class="input-group">
+                    <span class="input-group-text"><i class="bi bi-person"></i></span>
+                    <input type="text" class="form-control" id="username" placeholder="请输入用户名" required autocomplete="username">
+                </div>
+            </div>
+            <div class="mb-3">
+                <label for="password" class="form-label">密码</label>
+                <div class="input-group">
+                    <span class="input-group-text"><i class="bi bi-lock"></i></span>
+                    <input type="password" class="form-control" id="password" placeholder="请输入密码" required autocomplete="current-password">
+                </div>
+            </div>
+            <div class="mb-3 form-check">
+                <input type="checkbox" class="form-check-input" id="remember">
+                <label class="form-check-label" for="remember">记住我</label>
+            </div>
+            <button type="submit" class="btn btn-primary w-100" id="loginBtn">
+                <i class="bi bi-box-arrow-in-right"></i> 登录
+            </button>
+        </form>
+
+        <div class="text-center mt-3">
+            <p>还没有账号？<a href="/register">立即注册</a></p>
+            <p class="text-muted small">演示账号：admin / admin123</p>
+        </div>
+
+        <div id="loginAlert" class="alert alert-danger mt-3 d-none"></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+async function handleLogin(e) {
+    e.preventDefault();
+
+    const btn = document.getElementById('loginBtn');
+    const alert = document.getElementById('loginAlert');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> 登录中...';
+    alert.classList.add('d-none');
+
+    try {
+        const resp = await axios.post('/api/login', {
+            username: document.getElementById('username').value.trim(),
+            password: document.getElementById('password').value,
+            remember: document.getElementById('remember').checked
+        });
+
+        if (resp.data.success) {
+            window.location.href = '/dashboard';
+        } else {
+            alert.textContent = resp.data.message || '登录失败';
+            alert.classList.remove('d-none');
+        }
+    } catch (err) {
+        alert.textContent = err.response?.data?.message || '登录失败，请检查网络';
+        alert.classList.remove('d-none');
+    }
+
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-box-arrow-in-right"></i> 登录';
+}
+
+// 回车键登录
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+        handleLogin(new Event('submit'));
+    }
+});
+</script>
+{% endblock %}

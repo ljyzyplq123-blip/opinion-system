@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}网络舆情事件智能分析系统{% endblock %}</title>
+    <!-- Bootstrap 5 (本地) -->
+    <link href="{{ url_for('static', filename='lib/bootstrap.min.css') }}" rel="stylesheet">
+    <!-- Bootstrap Icons (本地) -->
+    <link href="{{ url_for('static', filename='lib/bootstrap-icons.css') }}" rel="stylesheet">
+    <!-- ECharts (本地) -->
+    <script src="{{ url_for('static', filename='lib/echarts.min.js') }}"></script>
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    {% block extra_head %}{% endblock %}
+</head>
+<body>
+    {% if current_user.is_authenticated %}
+    <!-- 顶部导航 -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary shadow-sm">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="/dashboard">
+                <i class="bi bi-graph-up-arrow"></i> 舆情分析系统
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav me-auto">
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.path == '/dashboard' %}active{% endif %}" href="/dashboard">
+                            <i class="bi bi-speedometer2"></i> 舆情看板
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.path == '/qa' %}active{% endif %}" href="/qa">
+                            <i class="bi bi-robot"></i> 智能问答
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.path == '/profile' %}active{% endif %}" href="/profile">
+                            <i class="bi bi-person-gear"></i> 个人中心
+                        </a>
+                    </li>
+                </ul>
+                <div class="d-flex align-items-center text-white">
+                    <span class="me-3">
+                        <i class="bi bi-person-circle"></i> {{ current_user.username }}
+                    </span>
+                    <button class="btn btn-outline-light btn-sm" onclick="logout()">
+                        <i class="bi bi-box-arrow-right"></i> 退出
+                    </button>
+                </div>
+            </div>
+        </div>
+    </nav>
+    {% endif %}
+
+    <!-- 主内容 -->
+    <main>
+        {% block content %}{% endblock %}
+    </main>
+
+    <!-- Bootstrap JS (本地) -->
+    <script src="{{ url_for('static', filename='lib/bootstrap.bundle.min.js') }}"></script>
+    <!-- Axios (本地) -->
+    <script src="{{ url_for('static', filename='lib/axios.min.js') }}"></script>
+    <!-- 通用JS -->
+    <script>
+        // API基础配置
+        axios.defaults.withCredentials = true;
+
+        // 全局错误处理
+        axios.interceptors.response.use(
+            response => response,
+            error => {
+                if (error.response && error.response.status === 401) {
+                    window.location.href = '/login';
+                }
+                return Promise.reject(error);
+            }
+        );
+
+        // 退出登录
+        function logout() {
+            axios.post('/api/logout').then(() => {
+                window.location.href = '/login';
+            });
+        }
+
+        // Toast通知
+        function showToast(message, type = 'info') {
+            const container = document.getElementById('toast-container');
+            if (!container) {
+                const div = document.createElement('div');
+                div.id = 'toast-container';
+                div.style.cssText = 'position:fixed;top:80px;right:20px;z-index:9999;';
+                document.body.appendChild(div);
+            }
+            const toastContainer = document.getElementById('toast-container');
+
+            const bgClass = {
+                'success': 'bg-success',
+                'error': 'bg-danger',
+                'warning': 'bg-warning',
+                'info': 'bg-info'
+            }[type] || 'bg-info';
+
+            const toast = document.createElement('div');
+            toast.className = `toast align-items-center text-white ${bgClass} border-0 show`;
+            toast.setAttribute('role', 'alert');
+            toast.innerHTML = `
+                <div class="d-flex">
+                    <div class="toast-body">${message}</div>
+                    <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+                </div>
+            `;
+            toastContainer.appendChild(toast);
+
+            setTimeout(() => {
+                toast.remove();
+            }, 3000);
+        }
+
+        // 数字格式化
+        function formatNumber(num) {
+            if (num >= 100000000) return (num / 100000000).toFixed(1) + '亿';
+            if (num >= 10000) return (num / 10000).toFixed(1) + '万';
+            return num.toString();
+        }
+
+        // 日期格式化
+        function formatDate(dateStr) {
+            if (!dateStr) return '';
+            const d = new Date(dateStr);
+            return d.toLocaleDateString('zh-CN');
+        }
+    </script>
+    {% block extra_scripts %}{% endblock %}
+</body>
+</html>

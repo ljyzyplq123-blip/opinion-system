@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+{% block title %}注册 - 网络舆情事件智能分析系统{% endblock %}
+
+{% block content %}
+<div class="auth-container">
+    <div class="auth-card">
+        <div class="auth-header">
+            <i class="bi bi-person-plus" style="font-size: 3rem; color: var(--bs-primary);"></i>
+            <h2>创建新账号</h2>
+            <p class="text-muted">开始使用舆情分析系统</p>
+        </div>
+
+        <form id="registerForm" onsubmit="handleRegister(event)">
+            <div class="mb-3">
+                <label for="username" class="form-label">用户名</label>
+                <div class="input-group">
+                    <span class="input-group-text"><i class="bi bi-person"></i></span>
+                    <input type="text" class="form-control" id="username" placeholder="2-20个字符" required minlength="2" maxlength="20">
+                </div>
+            </div>
+            <div class="mb-3">
+                <label for="email" class="form-label">邮箱</label>
+                <div class="input-group">
+                    <span class="input-group-text"><i class="bi bi-envelope"></i></span>
+                    <input type="email" class="form-control" id="email" placeholder="请输入有效邮箱" required>
+                </div>
+            </div>
+            <div class="mb-3">
+                <label for="password" class="form-label">密码</label>
+                <div class="input-group">
+                    <span class="input-group-text"><i class="bi bi-lock"></i></span>
+                    <input type="password" class="form-control" id="password" placeholder="至少6个字符" required minlength="6">
+                </div>
+            </div>
+            <div class="mb-3">
+                <label for="confirmPassword" class="form-label">确认密码</label>
+                <div class="input-group">
+                    <span class="input-group-text"><i class="bi bi-lock-fill"></i></span>
+                    <input type="password" class="form-control" id="confirmPassword" placeholder="再次输入密码" required minlength="6">
+                </div>
+            </div>
+            <button type="submit" class="btn btn-primary w-100" id="registerBtn">
+                <i class="bi bi-person-plus"></i> 注册
+            </button>
+        </form>
+
+        <div class="text-center mt-3">
+            <p>已有账号？<a href="/login">立即登录</a></p>
+        </div>
+
+        <div id="registerAlert" class="alert alert-danger mt-3 d-none"></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+async function handleRegister(e) {
+    e.preventDefault();
+
+    const btn = document.getElementById('registerBtn');
+    const alert = document.getElementById('registerAlert');
+    const password = document.getElementById('password').value;
+    const confirmPassword = document.getElementById('confirmPassword').value;
+
+    alert.classList.add('d-none');
+
+    if (password !== confirmPassword) {
+        alert.textContent = '两次输入的密码不一致';
+        alert.classList.remove('d-none');
+        return;
+    }
+
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> 注册中...';
+
+    try {
+        const resp = await axios.post('/api/register', {
+            username: document.getElementById('username').value.trim(),
+            email: document.getElementById('email').value.trim(),
+            password: password
+        });
+
+        if (resp.data.success) {
+            alert.className = 'alert alert-success mt-3';
+            alert.textContent = '注册成功！即将跳转到登录页...';
+            alert.classList.remove('d-none');
+            setTimeout(() => {
+                window.location.href = '/login';
+            }, 1500);
+        } else {
+            alert.textContent = resp.data.message || '注册失败';
+            alert.classList.remove('d-none');
+        }
+    } catch (err) {
+        alert.textContent = err.response?.data?.message || '注册失败，请稍后重试';
+        alert.classList.remove('d-none');
+    }
+
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-person-plus"></i> 注册';
+}
+</script>
+{% endblock %}

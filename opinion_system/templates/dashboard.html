@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+{% block title %}舆情看板 - 网络舆情事件智能分析系统{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <!-- 顶部操作栏 -->
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h4 class="mb-0"><i class="bi bi-speedometer2"></i> 舆情看板</h4>
+        <button class="btn btn-warning btn-sm" id="refreshRealBtn" onclick="refreshRealData()"
+                title="用真实热搜数据替换所有事件">
+            <i class="bi bi-cloud-download"></i> 刷新真实热搜数据
+        </button>
+    </div>
+
+    <!-- 统计卡片 -->
+    <div class="row g-3 mb-4" id="statsRow">
+        <div class="col-md-3">
+            <div class="stat-card card bg-primary text-white">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="card-title mb-0">舆情事件总数</h6>
+                            <h2 id="statTotalEvents" class="mb-0">-</h2>
+                        </div>
+                        <i class="bi bi-collection" style="font-size:2.5rem;opacity:0.5;"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stat-card card bg-danger text-white">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="card-title mb-0">高风险事件</h6>
+                            <h2 id="statHighRisk" class="mb-0">-</h2>
+                        </div>
+                        <i class="bi bi-exclamation-triangle" style="font-size:2.5rem;opacity:0.5;"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stat-card card bg-success text-white">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="card-title mb-0">今日新增</h6>
+                            <h2 id="statTodayEvents" class="mb-0">-</h2>
+                        </div>
+                        <i class="bi bi-lightning-charge" style="font-size:2.5rem;opacity:0.5;"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stat-card card bg-warning text-white">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="card-title mb-0">总报道数</h6>
+                            <h2 id="statTotalReports" class="mb-0">-</h2>
+                        </div>
+                        <i class="bi bi-newspaper" style="font-size:2.5rem;opacity:0.5;"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-3">
+        <!-- 左：热点事件列表 -->
+        <div class="col-lg-8">
+            <div class="card shadow-sm">
+                <div class="card-header d-flex justify-content-between align-items-center bg-white">
+                    <h5 class="mb-0"><i class="bi bi-fire text-danger"></i> 热点舆情事件</h5>
+                    <div class="btn-group btn-group-sm">
+                        <button class="btn btn-outline-primary active" onclick="sortEvents('heat', this)">按热度</button>
+                        <button class="btn btn-outline-primary" onclick="sortEvents('time', this)">按时间</button>
+                    </div>
+                </div>
+                <div class="card-body p-0" id="eventList">
+                    <div class="text-center py-5">
+                        <div class="spinner-border text-primary" role="status"></div>
+                        <p class="mt-2 text-muted">加载中...</p>
+                    </div>
+                </div>
+                <div class="card-footer bg-white" id="paginationFooter"></div>
+            </div>
+        </div>
+
+        <!-- 右：分类统计图 + 生命周期分布 -->
+        <div class="col-lg-4">
+            <div class="card shadow-sm mb-3">
+                <div class="card-header bg-white">
+                    <h6 class="mb-0"><i class="bi bi-pie-chart"></i> 事件分类分布</h6>
+                </div>
+                <div class="card-body">
+                    <div id="categoryChart" style="height:240px;"></div>
+                </div>
+            </div>
+            <div class="card shadow-sm">
+                <div class="card-header bg-white">
+                    <h6 class="mb-0"><i class="bi bi-activity"></i> 生命周期分布</h6>
+                </div>
+                <div class="card-body">
+                    <div id="lifecycleChart" style="height:240px;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+{% endblock %}

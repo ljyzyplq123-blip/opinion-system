@@ -1,0 +1,237 @@
+{% extends "base.html" %}
+{% block title %}智能问答 - 网络舆情事件智能分析系统{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4" style="max-width:1200px;">
+    <div class="row g-3">
+        <!-- 左侧：事件选择 + 聊天区 -->
+        <div class="col-lg-8">
+            <div class="card shadow-sm" style="height:calc(100vh - 120px);">
+                <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="bi bi-robot text-primary"></i> 智能问答助手</h5>
+                    <button class="btn btn-sm btn-outline-secondary" onclick="clearChat()">
+                        <i class="bi bi-arrow-repeat"></i> 清空对话
+                    </button>
+                </div>
+                <div class="card-body d-flex flex-column" style="overflow:hidden;">
+                    <!-- 聊天消息区 -->
+                    <div id="chatMessages" class="flex-grow-1 overflow-auto mb-3" style="max-height:calc(100vh - 280px);">
+                        <div class="text-center text-muted py-5">
+                            <i class="bi bi-robot" style="font-size:3rem;"></i>
+                            <p class="mt-3">你好！我是舆情分析助手。<br>选择事件后，可以对该事件的舆情数据进行提问。</p>
+                            <p class="small text-muted">示例问题：</p>
+                            <div class="d-flex flex-wrap justify-content-center gap-2">
+                                <button class="btn btn-sm btn-outline-primary" onclick="quickAsk('这个事件的情感倾向是怎样的？')">情感趋势</button>
+                                <button class="btn btn-sm btn-outline-primary" onclick="quickAsk('分析该事件的风险等级')">风险分析</button>
+                                <button class="btn btn-sm btn-outline-primary" onclick="quickAsk('事件的发展趋势如何？')">发展趋势</button>
+                                <button class="btn btn-sm btn-outline-primary" onclick="quickAsk('请总结这个事件的核心信息')">事件总结</button>
+                                <button class="btn btn-sm btn-outline-primary" onclick="quickAsk('给出舆情应对建议')">应对建议</button>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- 输入区 -->
+                    <div class="border-top pt-3">
+                        <form onsubmit="sendMessage(event)" class="d-flex gap-2">
+                            <select class="form-select" id="eventSelect" style="max-width:200px;">
+                                <option value="">不指定事件</option>
+                            </select>
+                            <input type="text" class="form-control" id="questionInput"
+                                   placeholder="输入问题...（如：分析该事件的情感倾向）" required>
+                            <button class="btn btn-primary" type="submit" id="sendBtn">
+                                <i class="bi bi-send"></i> 发送
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 右侧：问答历史 -->
+        <div class="col-lg-4">
+            <div class="card shadow-sm" style="height:calc(100vh - 120px);">
+                <div class="card-header bg-white">
+                    <h6 class="mb-0"><i class="bi bi-clock-history"></i> 问答历史</h6>
+                </div>
+                <div class="card-body overflow-auto" id="historyList" style="max-height:calc(100vh - 180px);">
+                    <div class="text-center text-muted py-3">
+                        <p class="small">暂无问答记录</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+let chatMessages = [];
+document.addEventListener('DOMContentLoaded', () => {
+    loadEvents();
+    loadHistory();
+});
+
+// 加载事件列表供选择
+async function loadEvents() {
+    try {
+        const resp = await axios.get('/api/dashboard', { params: { sort: 'heat', per_page: 50 } });
+        if (resp.data.success) {
+            const select = document.getElementById('eventSelect');
+            resp.data.events.forEach(e => {
+                const opt = document.createElement('option');
+                opt.value = e.id;
+                opt.textContent = e.title.substring(0, 30);
+                select.appendChild(opt);
+            });
+
+            // 检查URL参数
+            const params = new URLSearchParams(window.location.search);
+            const eventId = params.get('event_id');
+            if (eventId) select.value = eventId;
+        }
+    } catch (err) { console.error(err); }
+}
+
+// 快速提问
+function quickAsk(q) {
+    document.getElementById('questionInput').value = q;
+    sendMessage(new Event('submit'));
+}
+
+// 发送消息
+async function sendMessage(e) {
+    e.preventDefault();
+    const input = document.getElementById('questionInput');
+    const question = input.value.trim();
+    if (!question) return;
+
+    const eventId = document.getElementById('eventSelect').value;
+    const sendBtn = document.getElementById('sendBtn');
+
+    // 添加用户消息
+    appendMessage('user', question);
+    input.value = '';
+    sendBtn.disabled = true;
+    sendBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+
+    // 添加AI占位
+    const loadingId = appendMessage('assistant', '<span class="spinner-border spinner-border-sm"></span> 思考中...');
+
+    try {
+        const resp = await axios.post('/api/qa/ask', {
+            question: question,
+            event_id: eventId || null
+        });
+
+        // 移除加载消息
+        removeMessage(loadingId);
+
+        if (resp.data.success) {
+            appendMessage('assistant', resp.data.answer);
+            loadHistory(); // 刷新历史
+        } else {
+            appendMessage('assistant', '抱歉，处理您的问题时出现错误。请稍后重试。');
+        }
+    } catch (err) {
+        removeMessage(loadingId);
+        appendMessage('assistant', '抱歉，请求超时。请检查网络连接后重试。');
+    }
+
+    sendBtn.disabled = false;
+    sendBtn.innerHTML = '<i class="bi bi-send"></i> 发送';
+}
+
+// 追加消息到聊天区
+function appendMessage(role, content) {
+    const container = document.getElementById('chatMessages');
+
+    // 移除初始欢迎消息
+    const welcome = container.querySelector('.text-center');
+    if (welcome) welcome.remove();
+
+    const msgId = 'msg-' + Date.now();
+    const isUser = role === 'user';
+    const html = `
+    <div class="chat-message mb-3 ${isUser ? 'text-end' : ''}" id="${msgId}">
+        <div class="d-inline-block ${isUser ? 'bg-primary text-white' : 'bg-light'} rounded-3 p-3"
+             style="max-width:80%;text-align:left;">
+            <div class="small fw-bold mb-1">${isUser ? '👤 你' : '🤖 AI分析助手'}</div>
+            <div class="message-content">${isUser ? escapeHtml(content) : formatAnswer(content)}</div>
+        </div>
+    </div>`;
+    container.insertAdjacentHTML('beforeend', html);
+    container.scrollTop = container.scrollHeight;
+    return msgId;
+}
+
+function removeMessage(msgId) {
+    const el = document.getElementById(msgId);
+    if (el) el.remove();
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+// 格式化AI回答（简单Markdown转HTML）
+function formatAnswer(text) {
+    if (!text) return '';
+    return text
+        .replace(/\*\*(.*?)\*\*/g, '<b>$1</b>')
+        .replace(/\n\n/g, '</p><p>')
+        .replace(/\n/g, '<br>')
+        .replace(/^/, '<p>')
+        .replace(/$/, '</p>');
+}
+
+// 清空对话
+function clearChat() {
+    document.getElementById('chatMessages').innerHTML = `
+        <div class="text-center text-muted py-5">
+            <i class="bi bi-robot" style="font-size:3rem;"></i>
+            <p class="mt-3">对话已清空。请提出新的问题。</p>
+        </div>`;
+}
+
+// 加载历史记录
+async function loadHistory() {
+    try {
+        const resp = await axios.get('/api/qa/history', { params: { per_page: 20 } });
+        if (!resp.data.success) return;
+
+        const history = resp.data.history || [];
+        const container = document.getElementById('historyList');
+        if (!history.length) {
+            container.innerHTML = '<div class="text-center text-muted py-3"><p class="small">暂无问答记录</p></div>';
+            return;
+        }
+
+        let html = '';
+        history.forEach(h => {
+            html += `
+            <div class="border-bottom py-2">
+                <small class="fw-bold d-block">${h.question.substring(0, 40)}...</small>
+                <small class="text-muted">${h.answer ? h.answer.substring(0, 50) + '...' : '无回答'}</small>
+                <div class="d-flex justify-content-between align-items-center mt-1">
+                    <small class="text-muted">${formatDate(h.created_at)}</small>
+                    <button class="btn btn-sm text-danger" onclick="deleteHistory(${h.id})" title="删除">
+                        <i class="bi bi-trash"></i>
+                    </button>
+                </div>
+            </div>`;
+        });
+        container.innerHTML = html;
+    } catch (err) { console.error(err); }
+}
+
+// 删除历史记录
+async function deleteHistory(id) {
+    try {
+        await axios.delete(`/api/qa/history/${id}`);
+        loadHistory();
+    } catch (err) { console.error(err); }
+}
+</script>
+{% endblock %}

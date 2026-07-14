@@ -1,0 +1,609 @@
+{% extends "base.html" %}
+{% block title %}事件详情 - 网络舆情事件智能分析系统{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <!-- 面包屑导航 -->
+    <nav aria-label="breadcrumb" class="mb-3">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="/dashboard">舆情看板</a></li>
+            <li class="breadcrumb-item active" id="breadcrumbTitle">事件详情</li>
+        </ol>
+    </nav>
+
+    <!-- 事件概览 -->
+    <div class="card shadow-sm mb-4" id="eventOverview">
+        <div class="card-body text-center py-5">
+            <div class="spinner-border text-primary" role="status"></div>
+            <p class="mt-2 text-muted">加载事件详情...</p>
+        </div>
+    </div>
+
+    <!-- 图表区 -->
+    <div class="row g-3 mb-4">
+        <!-- 发展趋势图 -->
+        <div class="col-lg-8">
+            <div class="card shadow-sm">
+                <div class="card-header bg-white">
+                    <h6 class="mb-0"><i class="bi bi-graph-up"></i> 发展趋势图</h6>
+                </div>
+                <div class="card-body">
+                    <div id="trendChart" style="height:350px;"></div>
+                </div>
+            </div>
+        </div>
+        <!-- 情感分布图 -->
+        <div class="col-lg-4">
+            <div class="card shadow-sm">
+                <div class="card-header bg-white">
+                    <h6 class="mb-0"><i class="bi bi-emoji-smile"></i> 情感倾向分布</h6>
+                </div>
+                <div class="card-body">
+                    <div id="sentimentPie" style="height:350px;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-3 mb-4">
+        <!-- 平台分布 -->
+        <div class="col-lg-4">
+            <div class="card shadow-sm">
+                <div class="card-header bg-white">
+                    <h6 class="mb-0"><i class="bi bi-diagram-3"></i> 平台分布</h6>
+                </div>
+                <div class="card-body">
+                    <div id="platformChart" style="height:300px;"></div>
+                </div>
+            </div>
+        </div>
+        <!-- 高频关键词词云 -->
+        <div class="col-lg-4">
+            <div class="card shadow-sm">
+                <div class="card-header bg-white">
+                    <h6 class="mb-0"><i class="bi bi-tags"></i> 高频关键词</h6>
+                </div>
+                <div class="card-body">
+                    <div id="keywordCloud" style="height:300px;"></div>
+                </div>
+            </div>
+        </div>
+        <!-- 生命周期 -->
+        <div class="col-lg-4">
+            <div class="card shadow-sm">
+                <div class="card-header bg-white">
+                    <h6 class="mb-0"><i class="bi bi-clock-history"></i> 生命周期阶段</h6>
+                </div>
+                <div class="card-body">
+                    <div id="lifecycleGauge" style="height:300px;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 虚假检测 & 传播溯源 -->
+    <div class="row g-3 mb-4">
+        <div class="col-lg-6">
+            <div class="card shadow-sm">
+                <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                    <h6 class="mb-0"><i class="bi bi-shield-check"></i> 虚假文本检测</h6>
+                    <button class="btn btn-sm btn-outline-primary" onclick="loadFakeNews()">
+                        <i class="bi bi-arrow-repeat"></i> 刷新
+                    </button>
+                </div>
+                <div class="card-body" id="fakeNewsContent">
+                    <div class="text-center py-3 text-muted">点击刷新获取检测结果</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-6">
+            <div class="card shadow-sm">
+                <div class="card-header bg-white">
+                    <h6 class="mb-0"><i class="bi bi-share"></i> 事件溯源与传播路径</h6>
+                </div>
+                <div class="card-body">
+                    <div id="propagationChart" style="height:300px;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 相关报道列表 -->
+    <div class="card shadow-sm">
+        <div class="card-header bg-white d-flex justify-content-between align-items-center">
+            <h6 class="mb-0"><i class="bi bi-list-ul"></i> 相关报道</h6>
+            <div class="btn-group btn-group-sm">
+                <button class="btn btn-outline-secondary" onclick="loadReports('')">全部</button>
+                <button class="btn btn-outline-success" onclick="loadReports('positive')">正面</button>
+                <button class="btn btn-outline-danger" onclick="loadReports('negative')">负面</button>
+                <button class="btn btn-outline-info" onclick="loadReports('neutral')">中性</button>
+            </div>
+        </div>
+        <div class="card-body p-0" id="reportsList">
+            <div class="text-center py-4 text-muted">加载中...</div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+const EVENT_ID = {{ event_id }};
+let eventData = null;
+
+document.addEventListener('DOMContentLoaded', () => {
+    loadEventDetail();
+    loadTrend();
+    loadSentiment();
+    loadPlatforms();
+    loadKeywords();
+    loadPropagation();
+    loadReports('');
+});
+
+async function loadEventDetail() {
+    try {
+        const resp = await axios.get(`/api/events/${EVENT_ID}`);
+        if (!resp.data.success) return;
+        eventData = resp.data.event;
+        renderOverview(eventData);
+        loadLifecycleGauge();
+        document.getElementById('breadcrumbTitle').textContent = eventData.title;
+        document.title = eventData.title + ' - 舆情分析系统';
+    } catch (err) {
+        document.getElementById('eventOverview').innerHTML =
+            `<div class="card-body text-center py-5 text-danger">加载失败: ${err.message}</div>`;
+    }
+}
+
+function renderOverview(e) {
+    const riskBadge = e.risk_level === '高' ? 'danger' : (e.risk_level === '中' ? 'warning' : 'success');
+    const lcColors = {'潜伏期':'#909399','成长期':'#E6A23C','高潮期':'#F56C6C','衰退期':'#67C23A'};
+    const lcColor = lcColors[e.lifecycle_stage] || '#909399';
+    const lcDesc = {
+        '潜伏期': '事件正在萌芽阶段，报道量较少且增长缓慢',
+        '成长期': '事件关注度快速攀升，多平台开始扩散传播',
+        '高潮期': '事件关注度达到峰值，社会讨论最为广泛',
+        '衰退期': '事件关注度逐渐回落，公众注意力开始转移'
+    };
+    const riskDesc = {
+        '高': '该事件社会关注度极高，存在明显的负面情绪和扩散风险，建议立即启动舆情应急预案',
+        '中': '该事件有一定社会影响，需要持续关注舆论走向，做好应对准备',
+        '低': '该事件目前风险可控，建议保持常规监测'
+    };
+
+    // 涉及方拆分为标签
+    const involvedTags = (e.involved || '').split(/[,，、]/).filter(t => t.trim()).map(t =>
+        `<span class="badge bg-light text-dark border me-1">${t.trim()}</span>`
+    ).join('');
+
+    // 情感占比条
+    const posPct = (e.positive_ratio * 100).toFixed(0);
+    const negPct = (e.negative_ratio * 100).toFixed(0);
+    const neuPct = (e.neutral_ratio * 100).toFixed(0);
+
+    document.getElementById('eventOverview').innerHTML = `
+    <div class="card-body">
+        <!-- 标题行 -->
+        <div class="d-flex justify-content-between align-items-start flex-wrap mb-3">
+            <div class="flex-grow-1 me-3">
+                <h4 class="fw-bold mb-2">${e.title}</h4>
+                <div class="d-flex flex-wrap gap-2">
+                    <span class="badge bg-${riskBadge} fs-6"><i class="bi bi-shield-exclamation"></i> ${e.risk_level}风险</span>
+                    <span class="badge fs-6" style="background:${lcColor};color:#fff;"><i class="bi bi-activity"></i> ${e.lifecycle_stage}</span>
+                    <span class="badge bg-secondary fs-6"><i class="bi bi-folder"></i> ${e.category}</span>
+                    <span class="badge bg-info fs-6"><i class="bi bi-newspaper"></i> ${e.report_count}篇报道</span>
+                    <span class="badge bg-warning text-dark fs-6"><i class="bi bi-fire"></i> 热度 ${e.heat_index}</span>
+                </div>
+            </div>
+            <div class="text-end flex-shrink-0">
+                <a href="/qa?event_id=${e.id}" class="btn btn-primary">
+                    <i class="bi bi-robot"></i> 向AI提问此事件
+                </a>
+            </div>
+        </div>
+
+        <hr>
+
+        <!-- 事件概要 -->
+        <div class="row g-3">
+            <div class="col-lg-8">
+                <div class="mb-3">
+                    <h6 class="text-primary"><i class="bi bi-journal-text"></i> 事件概要</h6>
+                    <p class="mb-2" style="line-height:1.8;">${e.summary || '暂无概要信息'}</p>
+                </div>
+
+                <div class="row g-3 mb-3">
+                    <div class="col-md-6">
+                        <div class="border rounded p-2 h-100">
+                            <small class="text-muted d-block"><i class="bi bi-lightbulb"></i> 事件起因</small>
+                            <p class="mb-0 small" style="line-height:1.7;">${e.cause || '暂无详细信息'}</p>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="border rounded p-2 h-100">
+                            <small class="text-muted d-block"><i class="bi bi-geo-alt"></i> 发生地点 & 时间</small>
+                            <p class="mb-0 small">
+                                <span class="fw-bold">${e.location || '未知地点'}</span>
+                                &nbsp;&middot;&nbsp;
+                                ${e.event_time ? new Date(e.event_time).toLocaleString('zh-CN', {year:'numeric',month:'long',day:'numeric',hour:'2-digit',minute:'2-digit'}) : '未知时间'}
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                ${e.involved ? `
+                <div class="mb-3">
+                    <small class="text-muted d-block mb-1"><i class="bi bi-people"></i> 涉及方</small>
+                    <div>${involvedTags}</div>
+                </div>` : ''}
+
+                <!-- 风险评估 -->
+                <div class="row g-3 mb-3">
+                    <div class="col-md-6">
+                        <div class="border rounded p-2" style="border-left:4px solid ${lcColor};">
+                            <small class="text-muted d-block">生命周期阶段分析</small>
+                            <p class="mb-0 small" style="line-height:1.6;">${lcDesc[e.lifecycle_stage] || ''}</p>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="border rounded p-2" style="border-left:4px solid var(--bs-${riskBadge});">
+                            <small class="text-muted d-block">风险评估</small>
+                            <p class="mb-0 small" style="line-height:1.6;">${riskDesc[e.risk_level] || ''}</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 右侧：数据概览 -->
+            <div class="col-lg-4">
+                <div class="border rounded p-3 bg-light">
+                    <h6 class="mb-3"><i class="bi bi-bar-chart"></i> 数据概览</h6>
+
+                    <div class="mb-3">
+                        <small class="text-muted d-block">情感倾向分布</small>
+                        <div class="mt-1" style="height:8px;border-radius:4px;overflow:hidden;display:flex;">
+                            <div style="width:${posPct}%;background:#67C23A;" title="正面 ${posPct}%"></div>
+                            <div style="width:${neuPct}%;background:#909399;" title="中性 ${neuPct}%"></div>
+                            <div style="width:${negPct}%;background:#F56C6C;" title="负面 ${negPct}%"></div>
+                        </div>
+                        <div class="d-flex justify-content-between mt-1">
+                            <small class="text-success">正面 ${posPct}%</small>
+                            <small class="text-secondary">中性 ${neuPct}%</small>
+                            <small class="text-danger">负面 ${negPct}%</small>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <small class="text-muted d-block">虚假信息风险评分</small>
+                        <div class="d-flex align-items-center gap-2 mt-1">
+                            <div class="flex-grow-1" style="height:8px;border-radius:4px;overflow:hidden;background:#eee;">
+                                <div style="width:${(e.fake_news_score * 100).toFixed(0)}%;height:100%;background:${e.fake_news_score > 0.5 ? '#F56C6C' : '#67C23A'};border-radius:4px;"></div>
+                            </div>
+                            <span class="fw-bold ${e.fake_news_score > 0.5 ? 'text-danger' : 'text-success'}">${(e.fake_news_score * 100).toFixed(0)}%</span>
+                        </div>
+                        <small class="text-muted">${e.fake_news_score > 0.5 ? '该事件存在较高虚假信息风险，请注意甄别' : '该事件整体可信度较高'}</small>
+                    </div>
+
+                    <div class="row g-2">
+                        <div class="col-6">
+                            <div class="border rounded p-2 text-center">
+                                <small class="text-muted d-block">报道总数</small>
+                                <span class="fw-bold fs-5 text-primary">${e.report_count}</span>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="border rounded p-2 text-center">
+                                <small class="text-muted d-block">热度指数</small>
+                                <span class="fw-bold fs-5 text-danger">${e.heat_index}</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>`;
+}
+
+// 趋势图
+async function loadTrend() {
+    try {
+        const resp = await axios.get(`/api/events/${EVENT_ID}/trend`);
+        if (!resp.data.success) return;
+        const data = resp.data.trend;
+        const chart = echarts.init(document.getElementById('trendChart'));
+
+        chart.setOption({
+            tooltip: { trigger: 'axis' },
+            legend: { top: 5, data: ['报道量', '正面', '负面', '中性'] },
+            grid: { left: '3%', right: '4%', bottom: '10%', top: '15%', containLabel: true },
+            xAxis: { type: 'category', data: data.dates, axisLabel: { rotate: 30, fontSize: 10 } },
+            yAxis: { type: 'value' },
+            series: [
+                {
+                    name: '报道量', type: 'line',
+                    data: data.counts,
+                    smooth: true,
+                    lineStyle: { width: 3, color: '#5470c6' },
+                    itemStyle: { color: '#5470c6' },
+                    areaStyle: { color: 'rgba(84,112,198,0.1)' },
+                    markPoint: {
+                        data: data.key_nodes.map(n => ({
+                            name: n.desc, coord: [n.date, data.counts[data.dates.indexOf(n.date)] || 0]
+                        })),
+                        symbol: 'pin', symbolSize: 40,
+                        label: { fontSize: 10 }
+                    }
+                },
+                { name: '正面', type: 'line', data: data.positive, lineStyle: { color: '#67C23A' }, itemStyle: { color: '#67C23A' }, smooth: true },
+                { name: '负面', type: 'line', data: data.negative, lineStyle: { color: '#F56C6C' }, itemStyle: { color: '#F56C6C' }, smooth: true },
+                { name: '中性', type: 'line', data: data.neutral, lineStyle: { color: '#909399' }, itemStyle: { color: '#909399' }, smooth: true },
+            ]
+        });
+        window.addEventListener('resize', () => chart.resize());
+    } catch (err) { console.error(err); }
+}
+
+// 情感分布饼图
+async function loadSentiment() {
+    try {
+        const resp = await axios.get(`/api/events/${EVENT_ID}/sentiment`);
+        if (!resp.data.success) return;
+        const s = resp.data.sentiment;
+        const chart = echarts.init(document.getElementById('sentimentPie'));
+
+        chart.setOption({
+            tooltip: { trigger: 'item', formatter: '{b}: {c}%' },
+            legend: { bottom: 0 },
+            series: [{
+                type: 'pie',
+                radius: ['50%', '75%'],
+                center: ['50%', '45%'],
+                itemStyle: { borderRadius: 6 },
+                label: { fontSize: 12, formatter: '{b}\n{d}%' },
+                emphasis: {
+                    label: { fontSize: 16, fontWeight: 'bold' }
+                },
+                data: [
+                    { value: s.positive, name: '正面', itemStyle: { color: '#67C23A' } },
+                    { value: s.neutral, name: '中性', itemStyle: { color: '#909399' } },
+                    { value: s.negative, name: '负面', itemStyle: { color: '#F56C6C' } },
+                ]
+            }]
+        });
+        window.addEventListener('resize', () => chart.resize());
+    } catch (err) { console.error(err); }
+}
+
+// 平台分布
+async function loadPlatforms() {
+    try {
+        const resp = await axios.get(`/api/events/${EVENT_ID}/platforms`);
+        if (!resp.data.success) return;
+        const data = resp.data.platforms;
+        const chart = echarts.init(document.getElementById('platformChart'));
+
+        chart.setOption({
+            tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+            grid: { left: '3%', right: '10%', bottom: '3%', containLabel: true },
+            xAxis: { type: 'value' },
+            yAxis: { type: 'category', data: data.map(d => d.platform), inverse: true,
+                axisLabel: { fontSize: 10 } },
+            series: [{
+                type: 'bar',
+                data: data.map(d => ({
+                    value: d.count,
+                    itemStyle: {
+                        color: ['#5470c6','#91cc75','#fac858','#ee6666','#73c0de','#3ba272','#fc8452','#9a60b4'][data.indexOf(d) % 8],
+                        borderRadius: [0, 4, 4, 0]
+                    }
+                })),
+                barWidth: '55%',
+                label: { show: true, position: 'right', fontSize: 11 }
+            }]
+        });
+        window.addEventListener('resize', () => chart.resize());
+    } catch (err) { console.error(err); }
+}
+
+// 关键词词云
+async function loadKeywords() {
+    try {
+        const resp = await axios.get(`/api/events/${EVENT_ID}/keywords`);
+        if (!resp.data.success) return;
+        const keywords = resp.data.keywords;
+        if (!keywords.length) return;
+
+        const chart = echarts.init(document.getElementById('keywordCloud'));
+        // 模拟词云效果（用散点图/气泡图替代）
+        const maxWeight = Math.max(...keywords.map(k => k.weight));
+        const colors = ['#5470c6','#91cc75','#fac858','#ee6666','#73c0de','#3ba272','#fc8452','#9a60b4'];
+
+        const data = keywords.slice(0, 50).map((k, i) => ({
+            name: k.keyword,
+            value: (k.weight / maxWeight) * 100,
+            itemStyle: { color: colors[i % colors.length] }
+        }));
+
+        chart.setOption({
+            tooltip: { formatter: '{b}: 权重 {c}' },
+            series: [{
+                type: 'treemap',
+                data: data,
+                roam: false,
+                label: { show: true, formatter: '{b}', fontSize: 11 },
+                levels: [{ itemStyle: { gapWidth: 2 } }]
+            }]
+        });
+        window.addEventListener('resize', () => chart.resize());
+    } catch (err) { console.error(err); }
+}
+
+// 生命周期仪表盘
+async function loadLifecycleGauge() {
+    if (!eventData) return;
+
+    const chart = echarts.init(document.getElementById('lifecycleGauge'));
+    const stages = ['潜伏期', '成长期', '高潮期', '衰退期'];
+    const stageIdx = stages.indexOf(eventData.lifecycle_stage);
+    const value = stageIdx >= 0 ? (stageIdx + 1) / stages.length * 100 : 25;
+
+    chart.setOption({
+        series: [{
+            type: 'gauge',
+            startAngle: 210, endAngle: -30,
+            center: ['50%', '55%'],
+            radius: '85%',
+            min: 0, max: 100,
+            splitNumber: 4,
+            axisLine: {
+                lineStyle: {
+                    width: 20,
+                    color: [
+                        [0.25, '#909399'], [0.5, '#E6A23C'], [0.75, '#F56C6C'], [1, '#67C23A']
+                    ]
+                }
+            },
+            pointer: { length: '70%', width: 6, itemStyle: { color: 'auto' } },
+            axisTick: { distance: -20, length: 8 },
+            splitLine: { distance: -28, length: 18 },
+            axisLabel: {
+                distance: -50, fontSize: 10,
+                formatter: (v) => stages[Math.floor(v / 25)] || ''
+            },
+            detail: {
+                valueAnimation: true,
+                formatter: eventData.lifecycle_stage,
+                fontSize: 16,
+                offsetCenter: [0, '80%']
+            },
+            data: [{ value: value }]
+        }]
+    });
+    window.addEventListener('resize', () => chart.resize());
+}
+
+// 传播路径图
+async function loadPropagation() {
+    try {
+        const resp = await axios.get(`/api/events/${EVENT_ID}/trace`);
+        if (!resp.data.success) return;
+        const data = resp.data.trace;
+        const chart = echarts.init(document.getElementById('propagationChart'));
+
+        const categories = [
+            { name: '初始来源', itemStyle: { color: '#5470c6' } },
+            { name: '大V转发', itemStyle: { color: '#fac858' } },
+            { name: '官媒介入', itemStyle: { color: '#91cc75' } },
+            { name: '其他传播', itemStyle: { color: '#909399' } },
+        ];
+
+        const typeToCat = { 'origin': 0, 'vip_repost': 1, 'official': 2, 'normal': 3 };
+        const nodes = (data.nodes || []).map(n => ({
+            ...n,
+            category: typeToCat[n.type || 'normal'] || 3,
+            symbolSize: n.type === 'origin' ? 30 : (n.type === 'official' ? 25 : 18),
+            label: { show: true, fontSize: 10 }
+        }));
+
+        chart.setOption({
+            tooltip: { trigger: 'item', formatter: (p) => {
+                if (p.dataType === 'node') return `${p.name}<br/>${p.data.label || ''}<br/>${p.data.time || ''}`;
+                return '';
+            }},
+            legend: { data: categories.map(c => c.name), bottom: 0, textStyle: { fontSize: 10 } },
+            series: [{
+                type: 'graph',
+                layout: 'force',
+                force: { repulsion: 200, edgeLength: [100, 300] },
+                roam: true,
+                draggable: true,
+                categories: categories,
+                data: nodes,
+                edges: (data.edges || []).map(e => ({
+                    source: e.source,
+                    target: e.target,
+                    lineStyle: { color: '#ccc', curveness: 0.2 }
+                })),
+                label: { show: true, position: 'right', fontSize: 10 }
+            }]
+        });
+        window.addEventListener('resize', () => chart.resize());
+    } catch (err) { console.error(err); }
+}
+
+// 虚假检测
+async function loadFakeNews() {
+    const container = document.getElementById('fakeNewsContent');
+    container.innerHTML = '<div class="text-center py-3"><div class="spinner-border spinner-border-sm"></div> 检测中...</div>';
+
+    try {
+        const resp = await axios.get(`/api/events/${EVENT_ID}/fakenews`);
+        if (!resp.data.success) return;
+
+        const reports = resp.data.reports || [];
+        let html = `<div class="mb-2"><small>整体虚假风险：<b class="${resp.data.event_fake_score > 0.5 ? 'text-danger' : 'text-success'}">
+            ${(resp.data.event_fake_score * 100).toFixed(1)}%</b></small></div>`;
+
+        reports.slice(0, 8).forEach(r => {
+            const badge = r.verdict === '可信' ? 'bg-success' : (r.verdict === '存疑' ? 'bg-warning text-dark' : 'bg-danger');
+            const reasons = (r.reasons || []).slice(0, 2).map(rs => `<small class="text-muted">· ${rs}</small>`).join('<br>');
+            html += `<div class="border-bottom py-2">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div class="me-2">
+                        <small class="fw-bold">${r.title.substring(0, 40)}...</small>
+                        <div><small class="text-muted">来源：${r.source} | 作者：${r.author}</small></div>
+                        ${reasons ? `<div class="mt-1">${reasons}</div>` : ''}
+                    </div>
+                    <div class="text-end flex-shrink-0">
+                        <span class="badge ${badge}">${r.verdict}</span>
+                        <div><small class="text-muted">${(r.fake_probability * 100).toFixed(0)}%</small></div>
+                    </div>
+                </div>
+            </div>`;
+        });
+
+        container.innerHTML = html;
+    } catch (err) {
+        container.innerHTML = `<div class="text-center py-3 text-danger">加载失败</div>`;
+    }
+}
+
+// 报道列表
+async function loadReports(filter = '') {
+    const list = document.getElementById('reportsList');
+    list.innerHTML = '<div class="text-center py-4"><div class="spinner-border spinner-border-sm"></div> 加载中...</div>';
+
+    try {
+        const resp = await axios.get(`/api/events/${EVENT_ID}/reports`, { params: { sentiment: filter, per_page: 50 } });
+        if (!resp.data.success) return;
+
+        const reports = resp.data.reports || [];
+        let html = '<div class="table-responsive"><table class="table table-hover mb-0">';
+        html += '<thead class="table-light"><tr><th>标题</th><th>平台</th><th>时间</th><th>情感</th><th>关键节点</th></tr></thead><tbody>';
+
+        reports.forEach(r => {
+            const sentColor = r.sentiment_score > 0.3 ? 'success' : (r.sentiment_score < -0.3 ? 'danger' : 'secondary');
+            const sentLabel = r.sentiment_score > 0.3 ? '正面' : (r.sentiment_score < -0.3 ? '负面' : '中性');
+            const nodeLabels = {'origin':'🔴 首发','vip_repost':'⭐ 大V转发','official':'🏛️ 官媒'};
+
+            html += `<tr>
+                <td>
+                    <a href="${r.source_url || '#'}" target="_blank" class="text-decoration-none">${r.title.substring(0, 60)}</a>
+                </td>
+                <td><span class="badge bg-light text-dark">${r.platform}</span></td>
+                <td><small>${formatDate(r.publish_time)}</small></td>
+                <td><span class="badge bg-${sentColor}">${sentLabel}</span></td>
+                <td>${r.is_key_node ? (nodeLabels[r.node_type] || '🔑 关键节点') : '-'}</td>
+            </tr>`;
+        });
+
+        html += '</tbody></table></div>';
+        list.innerHTML = html;
+    } catch (err) {
+        list.innerHTML = '<div class="text-center py-4 text-danger">加载失败</div>';
+    }
+}
+
+</script>
+{% endblock %}

@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block title %}诊断页面{% endblock %}
+{% block content %}
+<div class="container py-4">
+    <h4>系统诊断</h4>
+    <div id="results" class="mt-3"></div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+const out = document.getElementById('results');
+function log(msg, ok) {
+    const color = ok ? 'green' : 'red';
+    out.innerHTML += `<p style="color:${color}">${ok ? '✅' : '❌'} ${msg}</p>`;
+}
+
+async function runTests() {
+    log('页面JS已执行', true);
+
+    // 测试1: axios可用
+    if (typeof axios !== 'undefined') {
+        log('Axios 已加载', true);
+    } else {
+        log('Axios 未加载!', false); return;
+    }
+
+    // 测试2: ECharts可用
+    if (typeof echarts !== 'undefined') {
+        log('ECharts 已加载', true);
+    } else {
+        log('ECharts 未加载!', false);
+    }
+
+    // 测试3: Bootstrap可用
+    if (typeof bootstrap !== 'undefined') {
+        log('Bootstrap JS 已加载', true);
+    } else {
+        log('Bootstrap JS 未加载', false);
+    }
+
+    // 测试4: API调用
+    try {
+        const resp = await axios.get('/api/dashboard?sort=heat');
+        if (resp.data.success) {
+            log(`事件API: 成功, ${resp.data.events.length}条事件`, true);
+            log(`第一条: ${resp.data.events[0].title}`, true);
+        } else {
+            log('事件API: success=false', false);
+        }
+    } catch (err) {
+        log(`事件API调用失败: ${err.message}`, false);
+    }
+
+    // 测试5: Stats
+    try {
+        const resp = await axios.get('/api/dashboard/stats');
+        if (resp.data.success) {
+            log(`统计API: 成功, ${resp.data.stats.total_events}个事件`, true);
+        } else {
+            log('统计API: success=false', false);
+        }
+    } catch (err) {
+        log(`统计API调用失败: ${err.message}`, false);
+    }
+
+    // 测试6: 图表渲染
+    try {
+        const div = document.createElement('div');
+        div.style.cssText = 'width:300px;height:300px;';
+        out.appendChild(div);
+        const chart = echarts.init(div);
+        chart.setOption({
+            title: {text: '测试图表'},
+            xAxis: {data: ['A','B','C']},
+            yAxis: {},
+            series: [{type:'bar', data:[1,2,3]}]
+        });
+        log('ECharts 图表渲染成功', true);
+    } catch (err) {
+        log(`图表渲染失败: ${err.message}`, false);
+    }
+
+    log('--- 诊断完成 ---', true);
+}
+
+runTests();
+</script>
+{% endblock %}

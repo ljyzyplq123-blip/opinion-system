@@ -1,0 +1,329 @@
+/* ============================================================
+   网络舆情事件智能分析系统 - 全局样式
+   ============================================================ */
+
+:root {
+    --primary: #5470c6;
+    --success: #67C23A;
+    --warning: #E6A23C;
+    --danger: #F56C6C;
+    --info: #909399;
+    --dark: #303133;
+    --light: #f5f7fa;
+    --white: #ffffff;
+    --border-color: #ebeef5;
+    --shadow: 0 2px 12px rgba(0,0,0,0.08);
+}
+
+/* ============ 基础样式 ============ */
+body {
+    background: #f0f2f5;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+    color: var(--dark);
+    min-height: 100vh;
+}
+
+main {
+    min-height: calc(100vh - 56px);
+}
+
+/* ============ 导航栏 ============ */
+.navbar {
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+}
+
+.navbar-brand {
+    font-weight: 700;
+    font-size: 1.2rem;
+    letter-spacing: 1px;
+}
+
+.nav-link.active {
+    background: rgba(255,255,255,0.2);
+    border-radius: 6px;
+}
+
+/* ============ 认证页面 ============ */
+.auth-container {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    padding: 20px;
+}
+
+.auth-card {
+    background: var(--white);
+    border-radius: 16px;
+    padding: 40px;
+    width: 100%;
+    max-width: 420px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+}
+
+.auth-header {
+    text-align: center;
+    margin-bottom: 30px;
+}
+
+.auth-header h2 {
+    font-weight: 700;
+    margin-top: 10px;
+}
+
+/* ============ 卡片样式 ============ */
+.card {
+    border: none;
+    border-radius: 12px;
+    box-shadow: var(--shadow);
+    transition: box-shadow 0.3s ease;
+}
+
+.card:hover {
+    box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+}
+
+.card-header {
+    border-bottom: 1px solid var(--border-color);
+    border-radius: 12px 12px 0 0 !important;
+    padding: 14px 20px;
+}
+
+.card-body {
+    padding: 20px;
+}
+
+/* ============ 统计卡片 ============ */
+.stat-card {
+    border: none;
+    border-radius: 12px;
+    box-shadow: var(--shadow);
+    transition: transform 0.2s ease;
+}
+
+.stat-card:hover {
+    transform: translateY(-2px);
+}
+
+.stat-card .card-body {
+    padding: 18px 20px;
+}
+
+.stat-card h2 {
+    font-weight: 700;
+    font-size: 2rem;
+}
+
+.stat-card .card-title {
+    opacity: 0.9;
+    font-weight: 500;
+}
+
+/* ============ 事件列表 ============ */
+.event-item {
+    transition: all 0.2s ease;
+    border-left: 3px solid transparent;
+    padding: 16px 20px;
+}
+
+.event-item:hover {
+    background-color: #f8f9ff;
+    border-left-color: var(--primary);
+}
+
+.event-summary {
+    line-height: 1.5;
+}
+
+/* ============ 聊天样式 ============ */
+.chat-message .bg-light {
+    background-color: #f0f2f5 !important;
+}
+
+.chat-message .message-content p {
+    margin-bottom: 0.5rem;
+}
+
+.chat-message .message-content p:last-child {
+    margin-bottom: 0;
+}
+
+#chatMessages::-webkit-scrollbar {
+    width: 6px;
+}
+
+#chatMessages::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+#chatMessages::-webkit-scrollbar-thumb {
+    background: #d0d5dd;
+    border-radius: 3px;
+}
+
+/* ============ 关键词标签 ============ */
+.keyword-tag .badge {
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.keyword-tag .badge:hover {
+    background-color: #e8eaf6 !important;
+}
+
+.keyword-tag .btn-close {
+    font-size: 0.5rem;
+}
+
+/* ============ 进度条 ============ */
+.progress {
+    background-color: #e9ecef;
+    border-radius: 10px;
+    overflow: hidden;
+}
+
+.progress-bar {
+    transition: width 0.6s ease;
+}
+
+/* ============ 徽章 ============ */
+.badge {
+    font-weight: 500;
+    letter-spacing: 0.5px;
+}
+
+/* ============ 按钮 ============ */
+.btn {
+    border-radius: 8px;
+    font-weight: 500;
+    transition: all 0.2s ease;
+}
+
+.btn-primary {
+    background-color: var(--primary);
+    border-color: var(--primary);
+}
+
+.btn-primary:hover {
+    background-color: #434190;
+    border-color: #434190;
+}
+
+/* ============ 表单 ============ */
+.form-control, .form-select {
+    border-radius: 8px;
+    border: 1px solid #d0d5dd;
+    padding: 10px 14px;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.form-control:focus, .form-select:focus {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(84,112,198,0.15);
+}
+
+.input-group-text {
+    border-radius: 8px 0 0 8px;
+    background: #f8f9fa;
+}
+
+/* ============ 面包屑 ============ */
+.breadcrumb {
+    background: transparent;
+    padding: 0;
+    margin: 0;
+}
+
+.breadcrumb-item a {
+    text-decoration: none;
+    color: var(--primary);
+}
+
+/* ============ 响应式广告 ============ */
+@media (max-width: 768px) {
+    .auth-card {
+        padding: 24px;
+    }
+
+    .stat-card h2 {
+        font-size: 1.5rem;
+    }
+
+    .event-item {
+        padding: 12px;
+    }
+}
+
+/* ============ 加载动画 ============ */
+.skeleton {
+    animation: skeleton-loading 1.4s ease infinite;
+    background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+    background-size: 200% 100%;
+    border-radius: 4px;
+}
+
+@keyframes skeleton-loading {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+}
+
+/* ============ 工具类 ============ */
+.cursor-pointer { cursor: pointer; }
+.text-primary-dark { color: #434190; }
+.fw-600 { font-weight: 600; }
+
+/* ============ 表格 ============ */
+.table th {
+    font-weight: 600;
+    color: #606266;
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.table td {
+    vertical-align: middle;
+    color: var(--dark);
+}
+
+/* ============ Modal ============ */
+.modal-content {
+    border-radius: 16px;
+    border: none;
+    overflow: hidden;
+}
+
+.modal-header {
+    border-bottom: 1px solid var(--border-color);
+    padding: 16px 24px;
+}
+
+.modal-body {
+    padding: 24px;
+}
+
+.modal-footer {
+    border-top: 1px solid var(--border-color);
+    padding: 16px 24px;
+}
+
+/* ============ 滚动条通用样式 ============ */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #c0c4cc;
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #909399;
+}

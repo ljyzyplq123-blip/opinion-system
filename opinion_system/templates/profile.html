@@ -1,0 +1,620 @@
+{% extends "base.html" %}
+{% block title %}个人中心 - 网络舆情事件智能分析系统{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4" style="max-width:1000px;">
+    <h4 class="mb-4"><i class="bi bi-person-gear"></i> 个人中心</h4>
+
+    <div class="row g-4">
+        <!-- 用户信息 -->
+        <div class="col-lg-4">
+            <div class="card shadow-sm">
+                <div class="card-body text-center">
+                    <i class="bi bi-person-circle" style="font-size:4rem;color:var(--bs-primary);"></i>
+                    <h5 class="mt-2">{{ current_user.username }}</h5>
+                    <p class="text-muted">{{ current_user.email }}</p>
+                    <p class="small text-muted">注册时间：{{ current_user.created_at.strftime('%Y-%m-%d') if current_user.created_at else '' }}</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- 监控源管理 -->
+        <div class="col-lg-8">
+            <div class="card shadow-sm mb-3">
+                <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                    <h6 class="mb-0"><i class="bi bi-rss"></i> 监控平台配置</h6>
+                    <button class="btn btn-primary btn-sm" onclick="showAddSourceModal()">
+                        <i class="bi bi-plus"></i> 添加
+                    </button>
+                </div>
+                <div class="card-body p-0" id="sourcesList">
+                    <div class="text-center py-4 text-muted">加载中...</div>
+                </div>
+            </div>
+
+            <!-- 关键词管理 -->
+            <div class="card shadow-sm mb-3">
+                <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                    <h6 class="mb-0"><i class="bi bi-tags"></i> 关注领域/关键词</h6>
+                    <button class="btn btn-primary btn-sm" onclick="showAddKeywordModal()">
+                        <i class="bi bi-plus"></i> 添加
+                    </button>
+                </div>
+                <div class="card-body" id="keywordsList">
+                    <div class="text-center py-4 text-muted">加载中...</div>
+                </div>
+            </div>
+
+            <!-- 爬虫配置管理 -->
+            <div class="card shadow-sm mb-3">
+                <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                    <h6 class="mb-0"><i class="bi bi-gear"></i> 爬虫配置（真实数据抓取）</h6>
+                    <button class="btn btn-sm btn-outline-primary" onclick="loadCrawlerStatus()">
+                        <i class="bi bi-arrow-repeat"></i> 刷新
+                    </button>
+                </div>
+                <div class="card-body" id="crawlerConfig">
+                    <div class="text-center py-3 text-muted">加载中...</div>
+                </div>
+            </div>
+
+            <!-- LLM 大模型配置 -->
+            <div class="card shadow-sm">
+                <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                    <h6 class="mb-0"><i class="bi bi-robot"></i> 大模型配置（智能问答）</h6>
+                    <button class="btn btn-sm btn-outline-primary" onclick="loadLLMConfig()">
+                        <i class="bi bi-arrow-repeat"></i> 刷新
+                    </button>
+                </div>
+                <div class="card-body" id="llmConfigSection">
+                    <div class="text-center py-3 text-muted">加载中...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 添加监控源Modal -->
+<div class="modal fade" id="sourceModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">添加监控源</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">平台名称</label>
+                    <input type="text" class="form-control" id="sourceName" placeholder="如：微博热搜">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">平台URL</label>
+                    <input type="url" class="form-control" id="sourceUrl" placeholder="https://...">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">类型</label>
+                    <select class="form-select" id="sourceType">
+                        <option value="news">新闻网站</option>
+                        <option value="social">社交平台</option>
+                        <option value="forum">论坛社区</option>
+                    </select>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" onclick="addSource()">确认添加</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 添加关键词Modal -->
+<div class="modal fade" id="keywordModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">添加关键词</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">关键词</label>
+                    <input type="text" class="form-control" id="keywordInput" placeholder="如：食品安全">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">分类</label>
+                    <select class="form-select" id="keywordCategory">
+                        <option value="general">综合</option>
+                        <option value="社会">社会</option>
+                        <option value="科技">科技</option>
+                        <option value="财经">财经</option>
+                        <option value="健康">健康</option>
+                        <option value="教育">教育</option>
+                        <option value="娱乐">娱乐</option>
+                        <option value="体育">体育</option>
+                    </select>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" onclick="addKeyword()">确认添加</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    loadSources();
+    loadKeywords();
+    loadCrawlerStatus();
+    loadLLMConfig();
+});
+
+// ============ 监控源管理 ============
+async function loadSources() {
+    try {
+        const resp = await axios.get('/api/user/sources');
+        if (!resp.data.success) return;
+        const sources = resp.data.sources || [];
+        const list = document.getElementById('sourcesList');
+
+        if (!sources.length) {
+            list.innerHTML = '<div class="text-center py-4 text-muted">暂无监控源，点击添加</div>';
+            return;
+        }
+
+        let html = '<div class="list-group list-group-flush">';
+        sources.forEach(s => {
+            html += `
+            <div class="list-group-item d-flex justify-content-between align-items-center">
+                <div>
+                    <span class="fw-bold">${s.platform_name}</span>
+                    <span class="badge bg-secondary ms-2">${s.source_type}</span>
+                    <div><small class="text-muted">${s.platform_url}</small></div>
+                </div>
+                <div class="d-flex align-items-center gap-2">
+                    <div class="form-check form-switch mb-0">
+                        <input class="form-check-input" type="checkbox" ${s.is_active ? 'checked' : ''}
+                               onchange="toggleSource(${s.id}, this.checked)">
+                    </div>
+                    <button class="btn btn-sm text-danger" onclick="deleteSource(${s.id})">
+                        <i class="bi bi-trash"></i>
+                    </button>
+                </div>
+            </div>`;
+        });
+        html += '</div>';
+        list.innerHTML = html;
+    } catch (err) { console.error(err); }
+}
+
+function showAddSourceModal() {
+    document.getElementById('sourceName').value = '';
+    document.getElementById('sourceUrl').value = '';
+    new bootstrap.Modal(document.getElementById('sourceModal')).show();
+}
+
+async function addSource() {
+    const name = document.getElementById('sourceName').value.trim();
+    const url = document.getElementById('sourceUrl').value.trim();
+    const type = document.getElementById('sourceType').value;
+    if (!name || !url) return;
+
+    try {
+        await axios.post('/api/user/sources', { platform_name: name, platform_url: url, source_type: type });
+        bootstrap.Modal.getInstance(document.getElementById('sourceModal')).hide();
+        loadSources();
+        showToast('添加成功', 'success');
+    } catch (err) {
+        showToast(err.response?.data?.message || '添加失败', 'error');
+    }
+}
+
+async function toggleSource(id, active) {
+    try {
+        await axios.put(`/api/user/sources/${id}`, { is_active: active });
+    } catch (err) { console.error(err); }
+}
+
+async function deleteSource(id) {
+    if (!confirm('确定删除此监控源？')) return;
+    try {
+        await axios.delete(`/api/user/sources/${id}`);
+        loadSources();
+        showToast('已删除', 'success');
+    } catch (err) {
+        showToast('删除失败', 'error');
+    }
+}
+
+// ============ 关键词管理 ============
+async function loadKeywords() {
+    try {
+        const resp = await axios.get('/api/user/keywords');
+        if (!resp.data.success) return;
+        const keywords = resp.data.keywords || [];
+        const list = document.getElementById('keywordsList');
+
+        if (!keywords.length) {
+            list.innerHTML = '<div class="text-center py-4 text-muted">暂无关注关键词，点击添加</div>';
+            return;
+        }
+
+        let html = '<div class="d-flex flex-wrap gap-2">';
+        keywords.forEach(k => {
+            html += `
+            <div class="keyword-tag">
+                <span class="badge bg-light text-dark border p-2">
+                    ${k.keyword}
+                    <span class="badge bg-secondary ms-1">${k.category}</span>
+                    <button class="btn-close btn-close-sm ms-2" onclick="deleteKeyword(${k.id})"></button>
+                </span>
+            </div>`;
+        });
+        html += '</div>';
+        list.innerHTML = html;
+    } catch (err) { console.error(err); }
+}
+
+function showAddKeywordModal() {
+    document.getElementById('keywordInput').value = '';
+    new bootstrap.Modal(document.getElementById('keywordModal')).show();
+}
+
+async function addKeyword() {
+    const keyword = document.getElementById('keywordInput').value.trim();
+    const category = document.getElementById('keywordCategory').value;
+    if (!keyword) return;
+
+    try {
+        await axios.post('/api/user/keywords', { keyword: keyword, category: category });
+        bootstrap.Modal.getInstance(document.getElementById('keywordModal')).hide();
+        loadKeywords();
+        showToast('添加成功', 'success');
+    } catch (err) {
+        showToast(err.response?.data?.message || '添加失败', 'error');
+    }
+}
+
+async function deleteKeyword(id) {
+    try {
+        await axios.delete(`/api/user/keywords/${id}`);
+        loadKeywords();
+        showToast('已删除', 'success');
+    } catch (err) {
+        showToast('删除失败', 'error');
+    }
+}
+
+// ============ 爬虫配置管理 ============
+let crawlerConfig = {};
+
+async function loadCrawlerStatus() {
+    const container = document.getElementById('crawlerConfig');
+    container.innerHTML = '<div class="text-center py-3"><div class="spinner-border spinner-border-sm"></div> 加载中...</div>';
+
+    try {
+        const resp = await axios.get('/api/crawler/status');
+        if (!resp.data.success) return;
+        crawlerConfig = resp.data;
+
+        const platforms = resp.data.platforms;
+
+        let html = '';
+
+        // 状态提示
+        html += `
+        <div class="alert alert-success py-2 mb-3">
+            <i class="bi bi-check-circle"></i>
+            <strong>真实数据抓取已开启</strong>
+            <small class="text-muted ms-2">系统始终从各平台实时抓取热搜数据</small>
+        </div>`;
+
+        // 各平台状态表
+        html += '<div class="table-responsive"><table class="table table-sm table-hover">';
+        html += '<thead><tr><th>平台</th><th>认证状态</th><th>操作</th></tr></thead><tbody>';
+
+        for (const [key, p] of Object.entries(platforms)) {
+            if (!p.enabled) continue;
+            const authStatus = p.has_auth
+                ? `<span class="badge bg-success">已认证 <small>(${p.auth_fields.join(', ')})</small></span>`
+                : `<span class="badge bg-warning text-dark">未配置Cookie</span>`;
+
+            html += `
+            <tr>
+                <td><strong>${p.name}</strong></td>
+                <td>${authStatus}</td>
+                <td>
+                    <button class="btn btn-sm btn-outline-primary" onclick="showCookieModal('${key}', '${p.name}')">
+                        <i class="bi bi-key"></i> 配置Cookie
+                    </button>
+                </td>
+            </tr>`;
+        }
+        html += '</tbody></table></div>';
+
+        // 快捷操作
+        html += `
+        <div class="d-flex gap-2 mt-2">
+            <button class="btn btn-sm btn-primary" onclick="triggerCrawl()">
+                <i class="bi bi-play-fill"></i> 手动触发爬取
+            </button>
+            <button class="btn btn-sm btn-outline-secondary" onclick="loadAuthGuide()">
+                <i class="bi bi-question-circle"></i> Cookie获取指南
+            </button>
+        </div>
+        <div id="crawlResult" class="mt-2"></div>`;
+
+        container.innerHTML = html;
+    } catch (err) {
+        container.innerHTML = `<div class="alert alert-danger">加载失败: ${err.message}</div>`;
+    }
+}
+
+function showCookieModal(platform, name) {
+    // 创建动态 Modal
+    const modalId = 'cookieModal';
+    let modal = document.getElementById(modalId);
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = modalId;
+        modal.className = 'modal fade';
+        modal.tabIndex = -1;
+        modal.innerHTML = `
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="cookieModalTitle">配置 Cookie</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body" id="cookieModalBody"></div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="button" class="btn btn-primary" onclick="saveCookies('${platform}')">保存</button>
+                </div>
+            </div>
+        </div>`;
+        document.body.appendChild(modal);
+    }
+
+    document.getElementById('cookieModalTitle').textContent = `配置 ${name} Cookie`;
+
+    // 根据平台显示不同字段
+    const fields = {
+        'weibo': [{key: 'SUB', label: 'SUB (微博登录凭证)', required: true},
+                   {key: 'SUBP', label: 'SUBP (可选)', required: false}],
+        'zhihu': [{key: 'z_c0', label: 'z_c0 (知乎Token)', required: true},
+                   {key: 'd_c0', label: 'd_c0 (可选)', required: false}],
+        'baidu': [{key: 'BAIDUID', label: 'BAIDUID (可选)', required: false},
+                   {key: 'BDUSS', label: 'BDUSS (可选)', required: false}],
+        'bilibili': [{key: 'SESSDATA', label: 'SESSDATA (B站凭证)', required: false}],
+    };
+
+    const platformFields = fields[platform] || [{key: 'cookie', label: 'Cookie 值', required: false}];
+
+    let formHtml = '<p class="text-muted small mb-3">请从浏览器 F12 → Application → Cookies 中复制对应值</p>';
+    platformFields.forEach(f => {
+        formHtml += `
+        <div class="mb-3">
+            <label class="form-label">${f.label} ${f.required ? '<span class="text-danger">*</span>' : ''}</label>
+            <input type="text" class="form-control cookie-input" data-key="${f.key}"
+                   placeholder="粘贴 ${f.label} 的值">
+        </div>`;
+    });
+
+    document.getElementById('cookieModalBody').innerHTML = formHtml;
+    window._cookiePlatform = platform;
+
+    new bootstrap.Modal(modal).show();
+}
+
+async function saveCookies(platform) {
+    const cookies = {};
+    document.querySelectorAll('.cookie-input').forEach(input => {
+        const val = input.value.trim();
+        if (val) cookies[input.dataset.key] = val;
+    });
+
+    try {
+        await axios.post(`/api/crawler/config/cookies/${platform}`, { cookies });
+        bootstrap.Modal.getInstance(document.getElementById('cookieModal')).hide();
+        loadCrawlerStatus();
+        showToast('Cookie 已保存', 'success');
+    } catch (err) {
+        showToast('保存失败: ' + (err.response?.data?.message || err.message), 'error');
+    }
+}
+
+async function triggerCrawl() {
+    const resultDiv = document.getElementById('crawlResult');
+    resultDiv.innerHTML = '<div class="spinner-border spinner-border-sm"></div> 爬取中...';
+
+    try {
+        const resp = await axios.post('/api/crawler/run', { force_real: false });
+        if (resp.data.success) {
+            resultDiv.innerHTML = `
+            <div class="alert alert-success py-2">
+                <i class="bi bi-check-circle"></i> 爬取完成！获取到 <strong>${resp.data.count}</strong> 条数据
+                ${resp.data.results.slice(0, 5).map(r =>
+                    `<div class="small mt-1">· ${r.title} <span class="text-muted">(${r.platform})</span></div>`
+                ).join('')}
+                ${resp.data.count > 5 ? `<div class="small text-muted mt-1">...还有 ${resp.data.count - 5} 条</div>` : ''}
+            </div>`;
+        }
+    } catch (err) {
+        resultDiv.innerHTML = `<div class="alert alert-danger py-2">爬取失败: ${err.message}</div>`;
+    }
+}
+
+async function loadAuthGuide() {
+    try {
+        const resp = await axios.get('/api/crawler/auth-guide');
+        if (!resp.data.success) return;
+
+        const guides = resp.data.guides;
+        let html = '<div class="alert alert-light border mt-2"><h6><i class="bi bi-book"></i> Cookie 获取指南</h6>';
+
+        for (const [key, guide] of Object.entries(guides)) {
+            html += `
+            <div class="mb-2 p-2 border rounded">
+                <strong>${guide.platform}</strong>
+                <ol class="small mb-1">${guide.steps.map(s => '<li>' + s + '</li>').join('')}</ol>
+                <small class="text-muted">需要: ${guide.required_cookies.join(', ') || '无'}</small>
+                <br><small class="text-warning">${guide.note}</small>
+            </div>`;
+        }
+        html += '</div>';
+
+        const resultDiv = document.getElementById('crawlResult');
+        resultDiv.innerHTML = html;
+    } catch (err) {
+        showToast('加载指南失败', 'error');
+    }
+}
+
+// ============ LLM 大模型配置管理 ============
+let llmPresets = {};
+
+async function loadLLMConfig() {
+    const container = document.getElementById('llmConfigSection');
+    container.innerHTML = '<div class="text-center py-3"><div class="spinner-border spinner-border-sm"></div> 加载中...</div>';
+
+    try {
+        const resp = await axios.get('/api/user/llm-config');
+        if (!resp.data.success) return;
+
+        const cfg = resp.data.config;
+        llmPresets = resp.data.presets || {};
+
+        let html = '';
+
+        // 预设按钮
+        html += '<div class="mb-3"><small class="text-muted">快速切换:</small> ';
+        html += '<div class="btn-group btn-group-sm flex-wrap">';
+        for (const [key, preset] of Object.entries(llmPresets)) {
+            html += `<button class="btn btn-outline-secondary" onclick="applyPreset('${key}')" title="${preset.description}">${preset.name}</button>`;
+        }
+        html += '</div></div>';
+
+        // 配置表单
+        html += `
+        <div class="mb-2">
+            <label class="form-label small fw-bold">API 地址</label>
+            <input type="text" class="form-control form-control-sm" id="llmApiUrl"
+                   value="${escapeHtml(cfg.api_url)}" placeholder="https://api.deepseek.com/v1/chat/completions">
+        </div>
+        <div class="mb-2">
+            <label class="form-label small fw-bold">API Key</label>
+            <div class="input-group input-group-sm">
+                <input type="password" class="form-control" id="llmApiKey"
+                       value="${escapeHtml(cfg.api_key)}" placeholder="sk-...">
+                <button class="btn btn-outline-secondary" type="button" onclick="toggleKeyVisibility()">
+                    <i class="bi bi-eye"></i>
+                </button>
+            </div>
+            ${cfg.api_key_masked ? `<small class="text-muted">当前: ${cfg.api_key_masked}</small>` : '<small class="text-danger">请填入你的API Key</small>'}
+        </div>
+        <div class="mb-3">
+            <label class="form-label small fw-bold">模型名称</label>
+            <input type="text" class="form-control form-control-sm" id="llmModel"
+                   value="${escapeHtml(cfg.model)}" placeholder="deepseek-chat">
+        </div>`;
+
+        // 操作按钮
+        html += `
+        <div class="d-flex gap-2">
+            <button class="btn btn-sm btn-primary" onclick="saveLLMConfig()">
+                <i class="bi bi-check-lg"></i> 保存配置
+            </button>
+            <button class="btn btn-sm btn-outline-success" onclick="testLLMConfig()">
+                <i class="bi bi-lightning-charge"></i> 测试连接
+            </button>
+        </div>
+        <div id="llmTestResult" class="mt-2"></div>`;
+
+        container.innerHTML = html;
+    } catch (err) {
+        container.innerHTML = `<div class="alert alert-danger py-2">加载失败: ${err.message}</div>`;
+    }
+}
+
+function applyPreset(key) {
+    const preset = llmPresets[key];
+    if (!preset) return;
+    if (key === 'custom') {
+        document.getElementById('llmApiUrl').value = '';
+        document.getElementById('llmModel').value = '';
+        return;
+    }
+    document.getElementById('llmApiUrl').value = preset.api_url;
+    document.getElementById('llmModel').value = preset.model;
+    showToast(`已切换到 ${preset.name} 预设`, 'info');
+}
+
+function toggleKeyVisibility() {
+    const input = document.getElementById('llmApiKey');
+    input.type = input.type === 'password' ? 'text' : 'password';
+}
+
+async function saveLLMConfig() {
+    const api_url = document.getElementById('llmApiUrl').value.trim();
+    const api_key = document.getElementById('llmApiKey').value.trim();
+    const model = document.getElementById('llmModel').value.trim();
+
+    if (!api_url || !api_key || !model) {
+        showToast('请填写完整配置', 'warning');
+        return;
+    }
+
+    try {
+        const resp = await axios.post('/api/user/llm-config', {
+            api_url, api_key, model
+        });
+        if (resp.data.success) {
+            showToast('LLM配置已保存，智能问答将使用新配置', 'success');
+            loadLLMConfig();
+        } else {
+            showToast(resp.data.message, 'error');
+        }
+    } catch (err) {
+        showToast('保存失败: ' + (err.response?.data?.message || err.message), 'error');
+    }
+}
+
+async function testLLMConfig() {
+    const api_url = document.getElementById('llmApiUrl').value.trim();
+    const api_key = document.getElementById('llmApiKey').value.trim();
+    const model = document.getElementById('llmModel').value.trim();
+
+    if (!api_url || !api_key || !model) {
+        showToast('请填写完整配置', 'warning');
+        return;
+    }
+
+    const resultDiv = document.getElementById('llmTestResult');
+    resultDiv.innerHTML = '<div class="spinner-border spinner-border-sm"></div> 测试连接中...';
+
+    try {
+        const resp = await axios.post('/api/user/llm-config/test', {
+            api_url, api_key, model
+        });
+        if (resp.data.success) {
+            resultDiv.innerHTML = `<div class="alert alert-success py-2"><i class="bi bi-check-circle"></i> ${resp.data.message}</div>`;
+        } else {
+            resultDiv.innerHTML = `<div class="alert alert-danger py-2"><i class="bi bi-x-circle"></i> ${resp.data.message}</div>`;
+        }
+    } catch (err) {
+        resultDiv.innerHTML = `<div class="alert alert-danger py-2">测试失败: ${err.response?.data?.message || err.message}</div>`;
+    }
+}
+
+function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+}
+</script>
+{% endblock %}
