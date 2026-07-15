@@ -81,6 +81,36 @@ def create_app(config_name=None):
     return app
 
 
+def _ensure_seed_data():
+    """创建默认演示用户和监控平台（若不存在）"""
+    from models import db, User, MonitoredSource
+
+    if User.query.first() is None:
+        demo_user = User(username='admin', email='admin@opinion.com')
+        demo_user.set_password('admin123')
+        db.session.add(demo_user)
+
+    if MonitoredSource.query.first() is None:
+        default_sources = [
+            MonitoredSource(user_id=1, platform_name='微博热搜',
+                            platform_url='https://weibo.com/top/summary',
+                            source_type='social'),
+            MonitoredSource(user_id=1, platform_name='百度热搜',
+                            platform_url='https://top.baidu.com/board',
+                            source_type='news'),
+            MonitoredSource(user_id=1, platform_name='知乎热榜',
+                            platform_url='https://www.zhihu.com/hot',
+                            source_type='social'),
+            MonitoredSource(user_id=1, platform_name='今日头条',
+                            platform_url='https://www.toutiao.com',
+                            source_type='news'),
+        ]
+        for s in default_sources:
+            db.session.add(s)
+
+    db.session.commit()
+
+
 def _auto_refresh_on_startup(app):
     """
     启动时自动用真实热搜数据初始化/刷新数据库
@@ -115,7 +145,7 @@ def _do_refresh(app, is_initial=False):
     from datetime import datetime, timedelta
     from models import db, User, Event, EventReport, EventTrend, EventKeyword
     from nlp.sentiment import analyze_sentiment, aggregate_sentiment
-    from nlp.segmentation import extract_keywords
+    from nlp.segmentation import extract_keywords, extract_keywords_tfidf
     from nlp.fake_detect import detect_fake_news
     from nlp.hotspot import classify_event_category, predict_risk_level
     from nlp.lifecycle import assign_lifecycle_stage
@@ -123,12 +153,17 @@ def _do_refresh(app, is_initial=False):
     # 导入爬虫管理器和工具函数
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     from crawler.spider import CrawlerManager
+    from crawler.article_fetcher import ArticleFetcher
+    from nlp.propagation import analyze_propagation, classify_report_node
     from scripts.refresh_real_data import (
         _get_cross_platforms, _make_platform_url, _generate_report_content,
         _generate_trend_data, group_by_platform
     )
 
     with app.app_context():
+        # 0. 确保必要的基础数据存在（否则爬虫找不到监控平台）
+        _ensure_seed_data()
+
         # 1. 爬取真实数据
         print("[Startup] 正在爬取各平台热搜...")
         manager = CrawlerManager()
@@ -161,20 +196,31 @@ def _do_refresh(app, is_initial=False):
                 if not title:
                     continue
 
-                content = _generate_report_content(title, desc, platform)
+                # 使用 ArticleFetcher 搜索真实文章
+                fetcher = ArticleFetcher()
+                source_articles = fetcher.fetch_for_topic(title, platform, max_articles=3)
+
+                if source_articles:
+                    primary_article = source_articles[0]
+                    content = f"{primary_article['title']}。{primary_article['content']}"
+                    event_time = primary_article.get('publish_time', now - timedelta(hours=random.randint(0, 48)))
+                else:
+                    content = f"【{platform}热搜】{title}。{desc}该话题引发网友广泛关注与讨论。"
+                    event_time = now - timedelta(hours=random.randint(0, 48))
+
                 sentiment_result = analyze_sentiment(content)
-                keywords_raw = extract_keywords(content, topk=15)
                 fake_result = detect_fake_news(content, '', platform)
                 category = classify_event_category(title + desc)
 
                 rank = item.get('rank', idx) or idx
                 heat_score = max(30, 99 - (rank * 2)) + random.uniform(-5, 5)
                 heat_score = min(99, max(30, heat_score))
-                event_time = now - timedelta(hours=random.randint(0, 48))
+
+                summary = desc or f"「{title}」引发全网热议，各大平台持续关注中。"
 
                 event = Event(
                     title=title,
-                    summary=desc or f"「{title}」引发全网热议，各大平台持续关注中。",
+                    summary=summary,
                     event_time=event_time,
                     location='全国',
                     cause=desc or f'{platform}热搜话题',
@@ -202,67 +248,102 @@ def _do_refresh(app, is_initial=False):
                 db.session.add(event)
                 db.session.flush()
 
-                # 原始报道
+                # 原始报道 — 使用真实文章信息
+                primary_url = source_articles[0].get('url', item.get('url', '')) if source_articles else item.get('url', '')
+                primary_author = source_articles[0].get('author', '实时热搜') if source_articles else '实时热搜'
+                primary_time = source_articles[0].get('publish_time', event_time) if source_articles else event_time
                 report = EventReport(
                     event_id=event.id, title=title, content=content,
-                    source_url=item.get('url', ''),
-                    platform=platform, publish_time=event_time,
-                    author='实时热搜', sentiment_score=sentiment_result['score'],
+                    source_url=primary_url,
+                    platform=platform, publish_time=primary_time,
+                    author=primary_author, sentiment_score=sentiment_result['score'],
                     is_original=True, is_key_node=True, node_type='origin',
                 )
                 db.session.add(report)
 
-                # 跨平台报道
+                # 统计各平台帖子数 + 抓取1-2篇跨平台代表报道
                 cross_platforms = _get_cross_platforms()
                 other_platforms = [p for p in cross_platforms if p != platform]
+                platform_counts = {platform: 1}
                 extra_reports = 0
-                for extra_plat in random.sample(other_platforms, min(3, len(other_platforms))):
-                    extra_time = event_time + timedelta(hours=random.randint(1, 12))
-                    extra_title = f"[{extra_plat}转载] {title}"
-                    extra_content = f"【{extra_plat}】{title}。{desc}此消息已在全网多平台引发热议。"
-                    extra_sent = analyze_sentiment(extra_content)
-                    is_key = random.random() < 0.4
-                    extra_report = EventReport(
-                        event_id=event.id, title=extra_title, content=extra_content,
-                        source_url=_make_platform_url(extra_plat, title),
-                        platform=extra_plat, publish_time=extra_time,
-                        author=f'{extra_plat}平台', sentiment_score=extra_sent['score'],
-                        is_original=False, is_key_node=is_key,
-                        node_type=random.choice(['vip_repost', 'official']) if is_key else 'normal',
-                    )
-                    db.session.add(extra_report)
-                    extra_reports += 1
+                extra_sentiments = []
 
+                try:
+                    counts = fetcher.count_all_platforms(title, other_platforms)
+                    platform_counts.update(counts)
+                except Exception:
+                    pass
+
+                # 每个其他平台抓取1-2篇代表报道（展示在"相关报道"列表）
+                NODE_DELAY = {
+                    'origin': (0, 1), 'vip_repost': (1, 6),
+                    'official': (3, 12), 'normal': (6, 24),
+                }
+                for extra_plat in random.sample(other_platforms, min(3, len(other_platforms))):
+                    cross_articles = fetcher.fetch_cross_platform(
+                        title, platform, extra_plat, max_articles=2
+                    )
+                    if cross_articles:
+                        for ca_idx, ca in enumerate(cross_articles):
+                            extra_content = f"{ca['title']}。{ca['content']}"
+                            extra_sent = analyze_sentiment(extra_content)
+                            extra_sentiments.append(extra_sent)
+                            node_meta = ca.get('node_meta', {})
+                            classification = classify_report_node(ca, is_original=False, node_meta=node_meta)
+                            is_key = (ca_idx == 0 or
+                                      classification['node_type'] in ('official', 'vip_repost'))
+                            # 根据节点类型计算合理的传播延迟
+                            min_h, max_h = NODE_DELAY.get(classification['node_type'], (1, 12))
+                            article_time = ca.get('publish_time')
+                            if (article_time and
+                                abs((datetime.utcnow() - article_time).total_seconds()) < 3600):
+                                article_time = None
+                            extra_time = article_time if article_time else \
+                                event_time + timedelta(hours=random.randint(min_h, max_h))
+                            extra_report = EventReport(
+                                event_id=event.id,
+                                title=ca['title'][:200],
+                                content=ca['content'][:500],
+                                source_url=ca.get('url', ''),
+                                platform=extra_plat,
+                                publish_time=extra_time,
+                                author=ca.get('author', f'{extra_plat}平台'),
+                                sentiment_score=extra_sent['score'],
+                                is_original=False,
+                                is_key_node=is_key,
+                                node_type=classification['node_type'],
+                            )
+                            db.session.add(extra_report)
+                            extra_reports += 1
+
+                event.platform_distribution = json.dumps(platform_counts, ensure_ascii=False)
                 total_reports = 1 + extra_reports
                 event.report_count = total_reports
 
-                # 情感聚合
-                all_scores = [sentiment_result] + [analyze_sentiment(f"[{p}] {title}") for p in random.sample(other_platforms, min(3, len(other_platforms)))]
-                agg = aggregate_sentiment(all_scores)
-                event.positive_ratio = round(agg['positive'], 2)
-                event.negative_ratio = round(agg['negative'], 2)
-                event.neutral_ratio = round(agg['neutral'], 2)
+                # 情感比例综合原始文章+跨平台报道
+                all_scores = [sentiment_result] + extra_sentiments
+                if len(all_scores) > 1:
+                    agg = aggregate_sentiment(all_scores)
+                    event.positive_ratio = round(agg['positive'], 2)
+                    event.negative_ratio = round(agg['negative'], 2)
+                    event.neutral_ratio = round(agg['neutral'], 2)
+                else:
+                    event.positive_ratio = round(sentiment_result['positive_ratio'], 2)
+                    event.negative_ratio = round(sentiment_result['negative_ratio'], 2)
+                    event.neutral_ratio = round(sentiment_result['neutral_ratio'], 2)
 
-                # 丰富 source_trace
-                event.source_trace = json.dumps({
-                    'initial_source': {
-                        'platform': platform,
-                        'url': item.get('url', ''),
-                        'time': event_time.isoformat(),
-                        'description': f'事件最早由{platform}热搜话题引爆'
-                    },
-                    'key_nodes': [
-                        {'type': 'origin', 'platform': platform, 'time': event_time.isoformat(),
-                         'description': f'{platform}首发热搜'}
-                    ] + [
-                        {'type': 'cross_platform', 'platform': p,
-                         'time': (event_time + timedelta(hours=random.randint(1, 12))).isoformat(),
-                         'description': f'{p}平台跟进报道'}
-                        for p in random.sample(other_platforms, min(2, len(other_platforms)))
-                    ]
-                }, ensure_ascii=False)
+                # 传播路径分析
+                all_reports = EventReport.query.filter_by(event_id=event.id).order_by(
+                    EventReport.publish_time).all()
+                trace_data = analyze_propagation(event, all_reports)
+                event.source_trace = json.dumps(trace_data, ensure_ascii=False)
 
-                # 关键词
+                # 使用 TF-IDF 提取关键词（在所有报道文档上计算）
+                report_contents = [r.content for r in all_reports if r.content]
+                if report_contents:
+                    keywords_raw = extract_keywords_tfidf(report_contents, topk=15)
+                else:
+                    keywords_raw = extract_keywords(content, topk=15)
                 for kw in keywords_raw[:15]:
                     db.session.add(EventKeyword(
                         event_id=event.id, keyword=kw['keyword'], weight=kw['weight']
@@ -271,12 +352,6 @@ def _do_refresh(app, is_initial=False):
                 # 趋势数据
                 _generate_trend_data(event.id, now, event)
                 events_created += 1
-
-        # 确保有演示用户
-        if User.query.first() is None:
-            demo_user = User(username='admin', email='admin@opinion.com')
-            demo_user.set_password('admin123')
-            db.session.add(demo_user)
 
         db.session.commit()
         print(f"[Startup] 成功创建 {events_created} 个真实舆情事件")

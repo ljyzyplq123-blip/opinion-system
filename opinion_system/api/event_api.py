@@ -1,11 +1,27 @@
 """
 Event API - 事件详情
 """
+from datetime import datetime
 from flask import Blueprint, request, jsonify
 from flask_login import login_required
 from models import db, Event, EventReport, EventKeyword, EventTrend
 
 event_bp = Blueprint('event', __name__)
+
+
+def _fmt_iso(iso_str):
+    """将 ISO 时间字符串转为人类可读格式 'YYYY-MM-DD HH:MM'"""
+    if not iso_str:
+        return ''
+    try:
+        # 处理各种ISO格式: '2025-07-10T12:30:00', '2025-07-10T12:30:00.123456'
+        s = iso_str.replace('T', ' ').split('.')[0].split('+')[0].split('Z')[0]
+        # 截取到分钟
+        if len(s) >= 16:
+            return s[:16]
+        return s
+    except Exception:
+        return iso_str
 
 
 @event_bp.route('/events/<int:event_id>', methods=['GET'])
@@ -105,6 +121,29 @@ def get_event_keywords(event_id):
     })
 
 
+@event_bp.route('/events/<int:event_id>/wordcloud', methods=['GET'])
+@login_required
+def get_event_wordcloud(event_id):
+    """生成服务端词云图（参照 weibo_wordcloud 方案）"""
+    from nlp.wordcloud_gen import generate_wordcloud
+
+    keywords = EventKeyword.query.filter_by(event_id=event_id).order_by(
+        EventKeyword.weight.desc()).limit(50).all()
+
+    if not keywords:
+        return jsonify({'success': False, 'message': '无关键词数据'}), 404
+
+    kw_list = [{'keyword': k.keyword, 'weight': k.weight} for k in keywords]
+
+    try:
+        shape = request.args.get('shape', 'cloud')
+        palette = request.args.get('palette', 'vivid')
+        b64_img = generate_wordcloud(kw_list, mask_shape=shape, palette=palette)
+        return jsonify({'success': True, 'image': b64_img})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+
 @event_bp.route('/events/<int:event_id>/reports', methods=['GET'])
 @login_required
 def get_event_reports(event_id):
@@ -168,6 +207,7 @@ def get_event_trace(event_id):
     # 构建节点：所有报道参与图谱
     seen_platforms = set()
     for r in all_reports:
+        pub_time = r.publish_time
         node = {
             'id': r.id,
             'name': r.platform,
@@ -175,7 +215,8 @@ def get_event_trace(event_id):
             'type': r.node_type or ('origin' if r.is_original else 'normal'),
             'is_key': r.is_key_node,
             'is_origin': r.is_original,
-            'time': r.publish_time.isoformat() if r.publish_time else '',
+            'time': pub_time.isoformat() if pub_time else '',
+            'formatted_time': pub_time.strftime('%Y-%m-%d %H:%M') if pub_time else '',
             'title': r.title,
             'sentiment': round(r.sentiment_score, 2),
         }
@@ -219,28 +260,102 @@ def get_event_trace(event_id):
             edges.append({'source': nodes[i-1]['id'], 'target': nodes[i]['id'],
                           'label': '后续'})
 
-    # 提取溯源中的关键节点信息
+    # 提取溯源中的关键节点信息，并融入图谱 nodes
     trace_nodes_from_data = []
     if trace_data:
         initial = trace_data.get('initial_source', {})
         if initial:
-            trace_nodes_from_data.append({
+            init_time = initial.get('time', '')
+            init_formatted = initial.get('formatted_time', '') or _fmt_iso(init_time)
+            tn = {
                 'id': 'trace_initial',
                 'name': initial.get('platform', '未知'),
-                'label': '信息首发',
+                'label': initial.get('author', '信息首发'),
                 'type': 'origin',
-                'time': initial.get('time', ''),
+                'time': init_time,
+                'formatted_time': init_formatted,
                 'description': initial.get('description', ''),
-            })
-        for kn in trace_data.get('key_nodes', []):
-            trace_nodes_from_data.append({
-                'id': f"trace_kn_{kn.get('platform','')}_{kn.get('time','')}",
+                'symbolSize': 35,
+            }
+            trace_nodes_from_data.append(tn)
+            nodes.insert(0, tn)  # 放在最前面
+
+        for i, kn in enumerate(trace_data.get('key_nodes', [])):
+            kn_type = kn.get('type', 'key')
+            # 统一 type 名称以匹配前端分类
+            if kn_type == 'official_media':
+                kn_type = 'official'
+            kn_time = kn.get('time', '')
+            kn_formatted = kn.get('formatted_time', '') or _fmt_iso(kn_time)
+            tn = {
+                'id': f"trace_kn_{i}_{kn.get('platform','')}",
                 'name': kn.get('platform', ''),
-                'label': kn.get('type', '关键节点'),
-                'type': kn.get('type', 'key'),
-                'time': kn.get('time', ''),
+                'label': kn.get('author', kn.get('description', '关键节点')),
+                'type': kn_type,
+                'time': kn_time,
+                'formatted_time': kn_formatted,
                 'description': kn.get('description', ''),
-            })
+                'symbolSize': 25 if kn_type == 'official' else 22,
+            }
+            trace_nodes_from_data.append(tn)
+            nodes.append(tn)  # 追加到图谱节点
+
+    # 按时间顺序重建边：形成传播链
+    # 对 trace 节点按时间排序，构建链式边
+    trace_nodes_sorted = sorted(
+        [n for n in nodes if str(n['id']).startswith('trace_')],
+        key=lambda n: n.get('time', '')
+    )
+    for i in range(len(trace_nodes_sorted) - 1):
+        edges.insert(0, {
+            'source': trace_nodes_sorted[i]['id'],
+            'target': trace_nodes_sorted[i + 1]['id'],
+            'label': '→',
+            'lineStyle': {'color': '#667eea', 'width': 2, 'curveness': 0.1},
+        })
+
+    # 将 trace 节点也连到对应的 EventReport 节点
+    for tn in trace_nodes_sorted:
+        matching_reports = [
+            r for r in all_reports
+            if r.platform == tn.get('name') and r.publish_time
+        ]
+        if matching_reports:
+            closest = min(
+                matching_reports,
+                key=lambda r: abs((r.publish_time - datetime.fromisoformat(tn['time'])).total_seconds())
+                if tn.get('time') and r.publish_time else 999999
+            )
+            if closest.id != tn['id']:
+                edges.append({
+                    'source': tn['id'],
+                    'target': closest.id,
+                    'label': '详情',
+                    'lineStyle': {'color': '#ddd', 'type': 'dashed'},
+                })
+
+    # 构建传播链 (供前端水平时间线)
+    propagation_chain = trace_data.get('propagation_timeline', []) if trace_data else []
+
+    # 统计 — 使用 v2 propagation metrics
+    metrics = trace_data.get('propagation_metrics', {})
+    platform_summary = trace_data.get('platform_summary', {})
+
+    stats = {
+        'total_platforms': platform_summary.get('total_platforms', len(seen_platforms)),
+        'platforms': platform_summary.get('platforms', list(seen_platforms)),
+        'total_reports': len(all_reports),
+        'key_report_count': platform_summary.get('key_report_count', len(key_reports)),
+        'official_report_count': platform_summary.get('official_report_count',
+            len([r for r in all_reports if getattr(r, 'node_type', '') == 'official'])),
+        'influencer_report_count': platform_summary.get('vip_report_count',
+            len([r for r in all_reports if getattr(r, 'node_type', '') == 'vip_repost'])),
+        'first_response_time': metrics.get('first_response_time', 'N/A'),
+        'first_response_delta': metrics.get('first_response_delta', ''),
+        'propagation_span': metrics.get('propagation_span', ''),
+        'propagation_depth': metrics.get('propagation_depth', 1),
+        'platform_detail': platform_summary.get('platform_detail', {}),
+    }
 
     return jsonify({
         'success': True,
@@ -248,14 +363,55 @@ def get_event_trace(event_id):
             'nodes': nodes,
             'edges': edges,
             'trace_data': trace_data,
-            'trace_nodes_from_data': trace_nodes_from_data,
-            'platform_summary': {
-                'total_platforms': len(seen_platforms),
-                'platforms': list(seen_platforms),
-                'total_reports': len(all_reports),
-                'key_report_count': len(key_reports),
-            }
+            'propagation_chain': propagation_chain,
+            'stats': stats,
         }
+    })
+
+
+@event_bp.route('/events/<int:event_id>/content-analysis', methods=['GET'])
+@login_required
+def get_event_content_analysis(event_id):
+    """内容分析：正文提取 + 分词 + 特征表示"""
+    from nlp.content_analyzer import analyze_document, extract_features_from_documents
+
+    reports = EventReport.query.filter_by(
+        event_id=event_id
+    ).order_by(EventReport.publish_time).all()
+
+    if not reports:
+        return jsonify({'success': False, 'message': '无报道数据'}), 404
+
+    # 分析每篇报道
+    report_analyses = []
+    all_contents = []
+
+    for r in reports[:10]:  # 最多分析10篇
+        content = r.content or ''
+        if len(content) < 20:
+            continue
+
+        analysis = analyze_document(content, is_html=False)
+        all_contents.append(content)
+
+        report_analyses.append({
+            'id': r.id,
+            'title': r.title,
+            'platform': r.platform,
+            'author': r.author,
+            'word_count': analysis['word_count'],
+            'keywords': analysis['keywords'][:8],
+            'features': analysis['features'],
+        })
+
+    # 聚合特征
+    agg_features = extract_features_from_documents(all_contents)
+
+    return jsonify({
+        'success': True,
+        'report_analyses': report_analyses,
+        'aggregated': agg_features,
+        'report_count': len(report_analyses),
     })
 
 

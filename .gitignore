@@ -8,6 +8,7 @@ __pycache__/
 
 # 数据库
 *.db
+*.db-journal
 *.sqlite
 
 # IDE
